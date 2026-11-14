@@ -1,18 +1,24 @@
-# [Nombre de tu proyecto]
+# OralSolutions — Predicción de Abandono de Tratamientos Odontológicos
 
-> Este es el README de tu proyecto: reemplaza cada sección entre corchetes a medida que avanzas. Escríbelo para alguien que clona tu fork sin haber estado en clase y necesita entender qué hace el proyecto y correrlo, no como una nota para ti.
+Proyecto de ciencia de datos que prepara y modela los registros clínicos, operativos y financieros de la clínica odontológica **OralSolutions** con el objetivo de predecir la probabilidad de que un paciente activo abandone su tratamiento en los próximos 60 días tras cada consulta atendida. Con esta predicción, el equipo administrativo y clínico prioriza recordatorios personalizados y reprogramaciones preventivas antes de que se pierda la continuidad del tratamiento, reemplazando la gestión puramente reactiva actual.
 
-[Un párrafo: qué problema de negocio resuelve, para quién, y qué predice el modelo. Sale de tu propuesta del PSet 1, que está completa en `docs/`.]
-
-**Métrica de éxito:** [la métrica de negocio y el umbral de decisión del PSet 1]
+**Métrica de éxito:** Incrementar en **10 puntos porcentuales** la tasa de continuidad de tratamientos a 60 días frente al seguimiento reactivo habitual (línea base), activando alertas preventivas cuando la probabilidad predicha de abandono sea $\ge 60\%$ (umbral justificado porque el costo operativo de un contacto preventivo es significativamente menor al costo clínico y financiero de perder un tratamiento recurrente).
 
 ## Datos
 
 | Fuente | Qué contiene | Cómo se obtiene | Dónde queda |
 |---|---|---|---|
-| [nombre de la fuente] | [qué filas y columnas trae, desde qué fecha] | [la URL, la API o el procedimiento exacto] | `data/raw/[archivo]` |
+| Dataset clínico-operativo OralSolutions (11 archivos CSV) | 38,603 registros distribuidos en: `patients.csv`, `dentists.csv`, `insurers.csv`, `procedures.csv`, `treatment_plans.csv`, `treatment_sessions.csv`, `treatment_lines.csv`, `appointments.csv`, `missed_appointments.csv`, `patient_followups.csv` e `invoices.csv` (citas, planes de tratamiento, sesiones, facturación, aseguradoras y seguimientos). | Archivos fuente del proyecto colocados localmente en `data/raw/` y verificados mediante el script de ingesta contenedorizado antes de su carga hacia el warehouse. | `data/raw/*.csv` |
 
-Los datos no están en el repositorio. Para regenerarlos desde cero: [los comandos, en orden]. Se completa con el PSet 1.
+Los datos no están en el repositorio (ignorados por `.gitignore`). Para verificar y preparar los archivos desde cero en local o mediante Docker:
+
+```powershell
+# Opción 1: Verificación directa en local (desde psets/proyecto)
+python ingesta/ingestar.py
+
+# Opción 2: Construcción y ejecución en contenedor aislado (desde psets/proyecto)
+docker build -t oralsolutions-ingesta .
+docker run --rm -v "${PWD}\data\raw:/app/data/raw" oralsolutions-ingesta
 
 ## Cómo correr el pipeline de datos
 

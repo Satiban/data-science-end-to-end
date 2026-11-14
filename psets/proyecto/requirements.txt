@@ -1,0 +1,8 @@
+numpy==2.5.4
+pandas==3.1.1
+python-dotenv==1.2.4
+requests==2.34.2
+snowflake-connector-python==5.2.0
+dbt-core==1.13.0rc1
+dbt-snowflake==1.12.5
+pyspark==3.5.3
