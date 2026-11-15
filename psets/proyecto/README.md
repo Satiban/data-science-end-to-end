@@ -19,10 +19,92 @@ python ingesta/ingestar.py
 # Opción 2: Construcción y ejecución en contenedor aislado (desde psets/proyecto)
 docker build -t oralsolutions-ingesta .
 docker run --rm -v "${PWD}\data\raw:/app/data/raw" oralsolutions-ingesta
+```
 
 ## Cómo correr el pipeline de datos
 
-[Los comandos, en orden y desde qué carpeta, para ir de la fuente al warehouse: levantar la infraestructura, construir la imagen, subir el flow a Kestra, limpiar, cargar y correr dbt. Cada paso dice qué archivo deja y dónde. Se completa con el PSet 2.]
+Implementa un pipeline ELT reproducible que procesa los **11 archivos CSV** mediante **Kestra → Snowflake Raw → dbt (Bronze, Silver y Gold) → Apache Spark → Snowflake OBT**, además de incluir una cadena local de calidad y warehouse en **DuckDB** (`calidad/` y `warehouse/construir_warehouse.py`). Salvo los scripts SQL (que se ejecutan en **Snowsight**), todos los comandos se ejecutan desde **`psets/proyecto/`**.
+
+### 1. Requisitos previos y configuración en Snowflake
+
+- **Docker Desktop** con Docker Compose y contenedores Linux (comandos escritos para PowerShell en Windows).
+    
+- **Python 3.11+** con dependencias instaladas (`pip install -r requirements.txt`).
+    
+- **Cuenta de Snowflake** con permisos `ACCOUNTADMIN` y autenticación usuario/contraseña habilitada.
+    
+- Los **11 archivos CSV** colocados en `data/raw/`.
+    
+
+La implementación utiliza los siguientes recursos en Snowflake (la inicialización SQL crea el warehouse, la base, los esquemas, las tablas Raw, el formato CSV y el stage, pero **no aprovisiona el usuario**):
+
+|**Recurso**|**Nombre o requisito utilizado**|
+|---|---|
+|Base de datos|`ORALSOLUTIONS_DW`|
+|Warehouse|`COMPUTE_WH`|
+|Rol de los flujos JDBC de Kestra|`ACCOUNTADMIN`|
+|Esquemas|`RAW`, `BRONZE`, `SILVER`, `GOLD`, `OBT`|
+
+### 2. Configurar credenciales privadas
+
+Crear los archivos locales de configuración a partir de las plantillas públicas (ignorados por `.gitignore`):
+
+PowerShell
+
+```
+Copy-Item .env.example .env
+Copy-Item infra/config/dbt/profiles.example.yml infra/config/dbt/profiles.yml
+```
+
+- **En `.env`:** completar `KESTRA_DB_PASSWORD`, `KESTRA_ADMIN_EMAIL`, `KESTRA_ADMIN_PASSWORD`, `ENV_SNOWFLAKE_URL`, `ENV_SNOWFLAKE_USER`, `SF_ACCOUNT`, `SF_USER`, `SF_WAREHOUSE=COMPUTE_WH`, `SF_DATABASE=ORALSOLUTIONS_DW`, `SF_GOLD_SCHEMA=GOLD`, `SF_OBT_SCHEMA=OBT`, `SF_ROLE=ACCOUNTADMIN`, `SECRET_SNOWFLAKE_PASSWORD` (contraseña en Base64 UTF-8) y `ENV_KESTRA_HOST_PROJECT_PATH` (ruta absoluta de `psets/proyecto/` visible para Docker, guardando `.env` en UTF-8 sin BOM con finales de línea `LF`).
+    
+    PowerShell
+    
+    ```
+    # Generar SECRET_SNOWFLAKE_PASSWORD en Base64:
+    python -c "import base64,getpass; print(base64.b64encode(getpass.getpass('Contraseña Snowflake: ').encode('utf-8')).decode('ascii'))"
+    ```
+    
+- **En `infra/config/dbt/profiles.yml`:** completar `account`, `user`, `password` (texto plano, sin Base64), `role: ACCOUNTADMIN` y `warehouse: COMPUTE_WH` manteniendo el perfil `oralsolutions`, target `dev` y base `ORALSOLUTIONS_DW`.
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Cómo entrenar y evaluar el modelo
 
