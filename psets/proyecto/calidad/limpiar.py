@@ -47,6 +47,15 @@ def limpiar_tabla(nombre: str, df: pd.DataFrame, planes_inicio: dict | None = No
     if "invoice_no" in df.columns:
         df["invoice_no"] = df["invoice_no"].str.upper()
 
+    # Normalizar correos electrónicos y convertir formatos inválidos en NA (patients)
+    if "email" in df.columns:
+        df["email"] = df["email"].str.lower()
+        email_valido = df["email"].str.fullmatch(
+            r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+            na=False,
+        )
+        df["email"] = df["email"].where(email_valido, pd.NA)
+
     # Validar rango [0, 1] en cover_fraction (manteniendo NA en pacientes sin seguro)
     if "cover_fraction" in df.columns:
         cov = pd.to_numeric(df["cover_fraction"], errors="coerce")
