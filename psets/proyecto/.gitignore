@@ -1,0 +1,30 @@
+# Variables de entorno y credenciales privadas
+.env
+.env.*
+!.env.example
+infra/config/dbt/profiles.yml
+**/profiles.yml
+
+# Datos locales (crudos, procesados y DuckDB)
+data/raw/*.csv
+data/processed/*.csv
+*.duckdb
+*.duckdb.wal
+
+# Python y Jupyter
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# dbt (artefactos autogenerados)
+warehouse/dbt/target/
+warehouse/dbt/logs/
+warehouse/dbt/dbt_packages/
+
+# Archivos del sistema y logs
+.DS_Store
+Thumbs.db
+logs/
+*.log

@@ -18,13 +18,13 @@ services:
     user: "root"
     command: server standalone
     env_file:
-      - .env
+      - ../.env
     volumes:
       - datos_kestra:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/kestra-wd:/tmp/kestra-wd
-      - ./data/raw:/data/raw:ro
-      - ./dbt:/app/dbt:ro
+      - ../data/raw:/data/raw:ro
+      - ../warehouse/dbt:/app/dbt:ro
 
     environment:
       KESTRA_CONFIGURATION: |
@@ -71,14 +71,14 @@ services:
     command: ["sleep infinity"]
 
     env_file:
-      - .env
+      - ../.env
 
     environment:
       SPARK_LOCAL_IP: 127.0.0.1
       PYSPARK_PYTHON: python3
 
     volumes:
-      - ./spark:/opt/spark/work-dir
+      - ../procesamiento:/opt/spark/work-dir
       - spark_ivy:/root/.ivy2
 
     ports:
@@ -88,17 +88,17 @@ services:
 
   dbt:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.dbt
 
     working_dir: /app/dbt
 
     env_file:
-      - .env
+      - ../.env
 
     volumes:
-      - ./dbt:/app/dbt
-      - ./config/dbt/profiles.yml:/root/.dbt/profiles.yml:ro
+      - ../warehouse/dbt:/app/dbt
+      - ../infra/config/dbt/profiles.yml:/root/.dbt/profiles.yml:ro
 
     entrypoint: ["tail", "-f", "/dev/null"]
 
