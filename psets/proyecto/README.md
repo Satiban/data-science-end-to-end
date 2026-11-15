@@ -61,10 +61,24 @@ psets/proyecto/
 │   ├── config/dbt/              # Plantilla y perfil privado de dbt
 │   └── sql/                     # Inicialización de Snowflake
 └── docs/                        # Canvas, propuesta, presentación y memo técnico
+```
 
-### 2. Requisitos previos
+### 2. Requisitos previos y entorno Python
 - **Docker Desktop** con Docker Compose y contenedores Linux. Los comandos siguientes están escritos para **PowerShell en Windows**.
-- **Python 3.11+** con las dependencias instaladas (`pip install -r requirements.txt`) y para generar localmente el secreto Base64 de Snowflake.
+- **Python 3.11+** con un entorno virtual dedicado donde se instalen las librerías de requirements.txt (numpy, pandas, python-dotenv, requests, gdown, duckdb, pytest):
+
+```PowerShell
+# Crear y activar entorno virtual en PowerShell (desde psets/proyecto/)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt<>
+```
+
+(En Linux / GitHub Codespaces: 
+```
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt).
+```
+
 - **Cuenta de Snowflake** con permisos `ACCOUNTADMIN` y un método de autenticación compatible con conexiones **usuario/contraseña**.
 - Conexión a Internet para descargar los datos desde Google Drive, conectar con Snowflake y descargar las imágenes/dependencias de Docker y Spark.
 - Los **11 archivos CSV** descargados y verificados en `data/raw/` (mediante `python ingesta/ingestar.py`).
@@ -84,8 +98,17 @@ La implementación actual utiliza estos nombres en los scripts SQL y en los fluj
 
 En una cuenta nueva, utilizar estos nombres y los permisos correspondientes. Si se desea utilizar otro rol, warehouse o nombre de base de datos, habrá que modificar **de manera coherente los YAML, scripts SQL, perfil dbt y configuración de Spark**. La inicialización SQL crea el warehouse, la base, los esquemas, las tablas Raw, el formato CSV y el stage, pero **no aprovisiona el usuario**.
 
-### 2. Configurar credenciales privadas
-Crear los archivos locales de configuración a partir de las plantillas públicas (ignorados por `.gitignore`):
+### 3. Obtener los datos y configurar credenciales privadas
+
+1. **Descargar y verificar los 11 archivos CSV en `data/raw/`:**
+
+```PowerShell
+python ingesta/ingestar.py
+```
+
+_(Confirma que los 11 archivos y sus **38,603 registros** estén disponibles en `data/raw/`)._
+
+2. **Crear los archivos locales de configuración a partir de las plantillas públicas (ignorados por `.gitignore`):**
 
 ```PowerShell
 Copy-Item .env.example .env
@@ -101,14 +124,14 @@ python -c "import base64,getpass; print(base64.b64encode(getpass.getpass('Contra
 
 - **En `infra/config/dbt/profiles.yml`:** completar `account`, `user`, `password` (texto plano, sin Base64), `role: ACCOUNTADMIN` y `warehouse: COMPUTE_WH` manteniendo el perfil `oralsolutions`, target `dev` y base `ORALSOLUTIONS_DW`.
 
-### 3. Cadena local de calidad y warehouse (DuckDB)
+### 4. Cadena local de calidad y warehouse (DuckDB)
 1. **Diagnóstico y limpieza de datos (`data/raw/*.csv` → `data/processed/*.csv`):**
 
 ```PowerShell
 python calidad/limpiar.py
 ```
 
-(El análisis detallado por tabla y dimensión con sus decisiones documentadas está en `calidad/diagnostico_proyecto.ipynb`).
+(Aplica las reglas documentadas en calidad/diagnostico_proyecto.ipynb y guarda los 11 CSV limpios en data/processed/).
 
 2. **Carga al warehouse local DuckDB y verificación de filas:**
 
@@ -118,7 +141,7 @@ python warehouse/construir_warehouse.py
 
 (Crea `warehouse/oralsolutions.duckdb` verificando que las **38,603 filas** cargadas coincidan exactamente con los CSV limpios).
 
-### 4. Pipeline End-to-End en Docker + Snowflake (Kestra → dbt → Spark)
+### 5. Pipeline End-to-End en Docker + Snowflake (Kestra → dbt → Spark)
 1. **Inicializar Snowflake (en Snowsight):** ejecutar en orden:
     - `infra/sql/01_setup_snowflake.sql`: crea el warehouse `COMPUTE_WH`, la base `ORALSOLUTIONS_DW` y los esquemas `RAW`, `BRONZE`, `SILVER`, `GOLD` y `OBT`.
     - `infra/sql/02_create_raw_tables.sql`: crea las 11 tablas en `RAW`, el formato `CSV_RAW_FORMAT` y el stage `RAW_CSV_STAGE`.
@@ -142,7 +165,7 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
 
 4. **Ejecutar el pipeline maestro:** abrir `oralsolutions.flow_proyecto` en Kestra y seleccionar **Execute**. Ejecuta secuencialmente la ingesta idempotente a `RAW` (con reintentos exponenciales `maxAttempts: 3`), las transformaciones `dbt run` y `dbt test` (`BRONZE`, `SILVER`, `GOLD`), y la construcción de `OBT.OBT_RIESGO_ABANDONO` mediante `procesamiento/job_spark.py`.
 
-### 5. Verificar resultados y operaciones opcionales
+### 6. Verificar resultados y operaciones opcionales
 Resultados esperados en Snowflake: **11** tablas cargadas en `RAW` (**38,603** registros), **28** modelos dbt, **177** pruebas aprobadas, **6,794** eventos en `GOLD.FACT_SESIONES_TRATAMIENTO` y **3,435** puntos candidatos únicos en `OBT.OBT_RIESGO_ABANDONO`.
 
 ```PowerShell
@@ -156,6 +179,9 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
 # Detener servicios sin borrar volúmenes
 docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2 down
 ```
+
+### Decisión de procesamiento: Batch vs. Streaming
+Este proyecto utiliza procesamiento por lotes (batch) diario (0 2 * * *, America/Guayaquil) y no requiere streaming, debido a que la decisión de negocio que habilita (priorizar llamadas, mensajes de seguimiento y reprogramaciones preventivas para pacientes con riesgo de abandonar su tratamiento en los próximos 60 días) no pierde valor con datos de horas de antigüedad. Durante la jornada diurna y vespertina la clínica registra citas y sesiones de forma progresiva, por lo que consolidar los datos en la madrugada permite que el equipo administrativo disponga cada mañana de las alertas actualizadas sin interferir con la operación clínica ni asumir la complejidad operativa de una arquitectura continua de baja latencia.
 
 ## Cómo entrenar y evaluar el modelo
 
