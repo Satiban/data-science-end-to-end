@@ -115,6 +115,13 @@ Copy-Item .env.example .env
 Copy-Item infra/config/dbt/profiles.example.yml infra/config/dbt/profiles.yml
 ```
 
+En Linux / GitHub Codespaces:
+
+```bash
+cp .env.example .env
+cp infra/config/dbt/profiles.example.yml infra/config/dbt/profiles.yml
+```
+
 - **En `.env`:** completar `KESTRA_DB_PASSWORD`, `KESTRA_ADMIN_EMAIL`, `KESTRA_ADMIN_PASSWORD`, `ENV_SNOWFLAKE_URL`, `ENV_SNOWFLAKE_USER`, `SF_ACCOUNT`, `SF_USER`, `SF_WAREHOUSE=COMPUTE_WH`, `SF_DATABASE=ORALSOLUTIONS_DW`, `SF_GOLD_SCHEMA=GOLD`, `SF_OBT_SCHEMA=OBT`, `SF_ROLE=ACCOUNTADMIN`, `SECRET_SNOWFLAKE_PASSWORD` (contraseña en Base64 UTF-8) y `ENV_KESTRA_HOST_PROJECT_PATH` (ruta absoluta de `psets/proyecto/` visible para Docker, guardando `.env` en UTF-8 sin BOM con finales de línea `LF`).
 
 ```PowerShell
@@ -140,6 +147,7 @@ python warehouse/construir_warehouse.py
 ```
 
 (Crea `warehouse/oralsolutions.duckdb` verificando que las **38,603 filas** cargadas coincidan exactamente con los CSV limpios).
+*(Nota: En entornos limpios como un Codespace nuevo, la primera ejecución del paso de Spark tarda ~9–10 minutos mientras descarga los conectores Maven/Ivy de Snowflake; en ejecuciones posteriores reutiliza el volumen caché `spark_ivy`).*
 
 ### 5. Pipeline End-to-End en Docker + Snowflake (Kestra → dbt → Spark)
 1. **Inicializar Snowflake (en Snowsight):** ejecutar en orden:
