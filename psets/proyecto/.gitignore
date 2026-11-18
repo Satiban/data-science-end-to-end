@@ -5,11 +5,18 @@
 infra/config/dbt/profiles.yml
 **/profiles.yml
 
-# Datos locales (crudos, procesados y DuckDB)
+# Datos locales (crudos, procesados, DuckDB y MLflow local)
 data/raw/*.csv
 data/processed/*.csv
+data/processed/*.parquet
 *.duckdb
 *.duckdb.wal
+mlruns/
+mlartifacts/
+*.db
+*.sqlite
+*.pkl
+*.joblib
 
 # Python y Jupyter
 __pycache__/
