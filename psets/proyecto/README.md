@@ -60,7 +60,18 @@ psets/proyecto/
 │   ├── docker-compose.yml       # PostgreSQL, Kestra, Spark y dbt
 │   ├── config/dbt/              # Plantilla y perfil privado de dbt
 │   └── sql/                     # Inicialización de Snowflake
-└── docs/                        # Canvas, propuesta, presentación y memo técnico
+├── modelado/
+│   ├── preparar_obt.py             # Extrae OBT de Snowflake, calcula abandono_60d y guarda CSV limpio
+│   ├── explorar_proyecto.ipynb     # EDA y 3 hallazgos que guían el modelado
+│   ├── features_proyecto.ipynb     # Diseño y prueba sin fuga de 4 features derivadas
+│   ├── pipeline_proyecto.py        # División temporal, features y preprocesador reutilizable
+│   ├── modelos_proyecto.ipynb      # Líneas base, candidatos y resultados_proyecto.csv
+│   ├── comparar_proyecto.ipynb     # Ensamblajes vs. red neuronal y prueba de LLM
+│   ├── experimentos_proyecto.ipynb # Tuning, tracking MLflow y corridas_proyecto.csv
+│   ├── validacion_proyecto.ipynb   # Validación cruzada, costos y calibración de umbral
+│   ├── resultados_proyecto.csv     # Tabla comparativa de modelos candidatos
+│   └── corridas_proyecto.csv       # Exportación limpia de las 101 corridas de MLflow
+└── docs/                           # Canvas, propuesta, presentación, memo técnico y decision_modelo.md
 ```
 
 ### 2. Requisitos previos y entorno Python
@@ -193,11 +204,51 @@ Este proyecto utiliza procesamiento por lotes (batch) diario (0 2 * * *, America
 
 ## Cómo entrenar y evaluar el modelo
 
-[Qué notebook corre cada etapa del modelado, en qué orden, y qué necesita levantado (MLflow). Se completa con el PSet 3.]
+Todos los comandos de esta etapa se ejecutan desde **`psets/proyecto/modelado/`** con el entorno virtual activado:
+
+1. **Extracción desde Snowflake y generación del dataset limpio (`modelado/preparar_obt.py`):**
+   - El flujo de modelado parte de la tabla analítica `ORALSOLUTIONS_DW.OBT.OBT_RIESGO_ABANDONO` (3,435 sesiones candidatas) generada en Snowflake por el pipeline ELT.
+   - El script `preparar_obt.py` se conecta a Snowflake con las credenciales definidas en `.env` (`SF_ACCOUNT`, `SF_USER`, `SECRET_SNOWFLAKE_PASSWORD`, `SF_WAREHOUSE`, `SF_DATABASE`, `SF_OBT_SCHEMA`, `SF_ROLE`), descarga la OBT, excluye las sesiones de los últimos 60 días (`> 2025-11-01`) para evitar censura a la derecha, calcula la variable objetivo binaria `abandono_60d` (eliminando columnas auxiliares futuras para evitar fuga) y guarda el archivo limpio `../data/processed/obt_riesgo_abandono.csv` (**2,377 sesiones**, 21 columnas, 0 nulos; huella `SHA-256 = 937af6f343e5de34e3e6b07cd211ebde6732221e73c53d2ec47d0e26a767cf60`):
+
+```powershell
+cd modelado
+python preparar_obt.py
+```
+
+2. **Archivo de entrada y división de datos (`modelado/pipeline_proyecto.py`):**
+   - Lee `../data/processed/obt_riesgo_abandono.csv`, ordena cronológicamente por `(fecha_realizada, sesion_key)` y aplica una **división temporal única** con corte **`FECHA_CORTE = 2025-08-01`**: **`1,551`** sesiones históricas para entrenamiento (`65.25%`) y **`826`** sesiones recientes (`2025-08-01` a `2025-11-01`) como prueba *hold-out* (`34.75%`).
+   - Construye las 4 variables derivadas sin fuga (`progreso_plan`, `ritmo_dias_por_sesion`, `friccion_previa` y `complejidad_proc`) y encapsula la imputación, `RobustScaler` y `OneHotEncoder(handle_unknown="ignore")` dentro de un `ColumnTransformer` / `Pipeline` ajustado **exclusivamente sobre entrenamiento** (23 columnas finales).
+   - Puede verificarse de forma independiente en una terminal nueva con:
+
+```powershell
+cd modelado
+python pipeline_proyecto.py
+```
+
+3. **Levantar el servidor de tracking MLflow:** Antes de correr los experimentos, asegúrate de tener activo el servicio de **MLflow** (`http://127.0.0.1:5000`) definido en `infra/docker-compose.yml`:
+
+```PowerShell
+# Desde psets/proyecto/
+docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2 up -d mlflow
+```
+
+4. **Orden de ejecución de los notebooks (`psets/proyecto/modelado/`):** Todos los notebooks de modelado importan directamente `pipeline_proyecto.py` y deben ejecutarse con **Restart & Run All**:
+    1. `explorar_proyecto.ipynb` — Análisis exploratorio (tamaño, faltantes, distribución de `abandono_60d`, atípicos IQR/Z-score, correlación de Spearman y 3 hallazgos con impacto en el modelo).
+    2. `features_proyecto.ipynb` — Evidencia estadística y verificación temporal sin fuga de las 4 variables derivadas.
+    3. `modelos_proyecto.ipynb` — Entrenamiento de 3 líneas base (`Dummy_Mayoritaria`, `Regla_Negocio_14d` y `Regla_1_Sesion`) y candidatos por defecto; exporta `resultados_proyecto.csv`.
+    4. `comparar_proyecto.ipynb` — Contraste de ensamblajes contra red neuronal (`MLPClassifier`), diagnóstico de regularización y evaluación de LLM (_few-shot prompting_ sobre 30 filas reales).
+    5. `experimentos_proyecto.ipynb` — Ajuste fino (`RandomizedSearchCV` con 30 configuraciones × 3 familias sobre `TimeSeriesSplit(5)`), registro de las 101 corridas limpias en MLflow (`OralSolutions`), registro en Model Registry (`oralsolutions-modelo`) y exportación de `corridas_proyecto.csv`.
+    6. `validacion_proyecto.ipynb` — Recarga de `@champion` desde el Model Registry, comparación de esquemas de validación cruzada (`TimeSeriesSplit`, `GroupKFold` por paciente y `KFold` aleatorio), cálculo de costo de errores (`FN = $120 USD`, `FP = $3 USD`) y calibración del umbral óptimo.
 
 ## Modelo final
-
-[El modelo elegido, su `run_id` en MLflow y la métrica que lo sostiene. El razonamiento completo está en `docs/decision_modelo.md`. Se completa con el PSet 3.]
+- **Modelo elegido (`@champion`):** Pipeline completo de scikit-learn con **`MLPClassifier`** (`alpha = 0.00338`, `learning_rate_init = 3.49e-4`, `hidden_layer_sizes = (128, 64)`, `max_iter = 400`, `random_state = 42`).
+- **Identificador en MLflow (`run_id`):** `f37cad28df994cf2babe352ff5eff3ef` (corrida `FINAL_Red_Neuronal`, tag `candidato = final`).
+- **Model Registry:** `oralsolutions-modelo` — **Versión 5**, alias **`@champion`** (segundo mejor: `Tuning_LogisticRegression`, `run_id = d5825f3287a9495a8ffd12e2513be18d`, **Versión 6**, alias **`@challenger`**).
+- **Métricas que lo sostienen:**
+    - **Validación cruzada temporal (`TimeSeriesSplit(5)`):** `PR-AUC = 0.98330 ± 0.00342` (superando en `+0.32` puntos a las líneas base operativas y con menor varianza entre pliegues que el `@challenger` `0.98298 ± 0.00461`).
+    - **Conjunto de prueba (_hold-out_ `>= 2025-08-01`, 826 sesiones):** **`PR-AUC = 0.98269`** (reproducido exactamente al recargar `models:/oralsolutions-modelo@champion`), con tiempo de entrenamiento de `3.48 s` e inferencia `< 6 ms` para todo el trimestre.
+    - **Impacto financiero con umbral calibrado (`u = 0.01`):** `Recall = 98.64 %`, `Precisión = 69.21 %`, reduciendo el costo de errores a **`$1,518 USD`** (`-72.1 %` frente al umbral inicial `0.60`) y alcanzando un balance neto de **`$18,294 USD`**.
+- **Documentación completa de la decisión:** `docs/decision_modelo.md` y `docs/PSet3_memo_Tiban.pdf`.
 
 ## Cómo correr el servicio
 
