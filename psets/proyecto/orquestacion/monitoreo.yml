@@ -26,8 +26,10 @@ tasks:
 
   - id: verificar_disparo_reentrenamiento
     type: io.kestra.plugin.core.flow.If
-    condition: "{{ outputs.consultar_alertas_servicio.code == 200 }}"
+    condition: "{{ json(outputs.evaluar_alertas_lotes.vars).alertas_criticas > 0 }}"
     then:
-      - id: notificar_resumen
-        type: io.kestra.plugin.core.log.Log
-        message: "Monitoreo completado. Si existen alertas críticas en docs/alertas.csv, disparar flujo oralsolutions.mlops/reentrenamiento."
+      - id: disparar_reentrenamiento
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: oralsolutions.mlops
+        flowId: reentrenamiento
+        wait: false

@@ -128,6 +128,24 @@ services:
       - mlflow
     restart: unless-stopped
 
+  tablero:
+    build:
+      context: ..
+      dockerfile: servicio/Dockerfile
+    command: ["streamlit", "run", "monitoreo/tablero.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    env_file:
+      - ../.env
+    environment:
+      API_URL: http://api:8000
+    volumes:
+      - ../monitoreo:/app/monitoreo:ro
+      - ../docs:/app/docs:ro
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   datos_postgres:
   datos_kestra:

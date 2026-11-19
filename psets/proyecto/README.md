@@ -2,7 +2,7 @@
 
 Proyecto de ciencia de datos que prepara y modela los registros clínicos, operativos y financieros de la clínica odontológica **OralSolutions** con el objetivo de predecir la probabilidad de que un paciente activo abandone su tratamiento en los próximos 60 días tras cada consulta atendida. Con esta predicción, el equipo administrativo y clínico prioriza recordatorios personalizados y reprogramaciones preventivas antes de que se pierda la continuidad del tratamiento, reemplazando la gestión puramente reactiva actual.
 
-**Métrica de éxito:** Incrementar en **10 puntos porcentuales** la tasa de continuidad de tratamientos a 60 días frente al seguimiento reactivo habitual (línea base), activando alertas preventivas cuando la probabilidad predicha de abandono sea $\ge 60\%$ (umbral justificado porque el costo operativo de un contacto preventivo es significativamente menor al costo clínico y financiero de perder un tratamiento recurrente).
+**Métrica de éxito:** Incrementar en **10 puntos porcentuales** la tasa de continuidad de tratamientos a 60 días frente al seguimiento reactivo habitual (línea base), activando alertas preventivas cuando la probabilidad predicha de abandono sea >= 1% (u = 0.01) (umbral justificado porque el costo operativo de un contacto preventivo es significativamente menor al costo clínico y financiero de perder un tratamiento recurrente).
 
 ## Datos
 
@@ -60,7 +60,7 @@ psets/proyecto/
 │   ├── monitoreo.yml               # Evaluación de deriva y alertas
 │   └── reentrenamiento.yml         # Reentrenamiento con pausa de aprobación humana
 ├── infra/
-│   ├── docker-compose.yml          # PostgreSQL, Kestra, Spark, dbt, MLflow y API
+│   ├── docker-compose.yml          # PostgreSQL, Kestra, Spark, dbt, MLflow, API y Tablero
 │   ├── config/dbt/                 # Plantilla y perfil privado de dbt
 │   └── sql/                        # Inicialización de Snowflake
 ├── modelado/
@@ -278,7 +278,7 @@ Desde `psets/proyecto/`:
 
 ```powershell
 # Construir y levantar MLflow + API en Docker
-docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2 up -d --build mlflow api
+docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2 up -d --build mlflow api tablero
 
 # Verificar estado del servicio y versión activa desde el Model Registry
 Invoke-RestMethod http://127.0.0.1:8000/salud
