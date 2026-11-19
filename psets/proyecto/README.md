@@ -16,12 +16,12 @@ Los datos no están en el repositorio (ignorados por `.gitignore`). Para obtener
   Ejecutar `ingesta/ingestar.py`, el cual comprueba si los 11 CSV ya existen localmente y, de no estar presentes, los descarga automáticamente desde Google Drive y verifica sus **38,603 registros**:
 
 ```powershell
-  # En local (con el entorno virtual activado)
-  python ingesta/ingestar.py
+  # En local (con el entorno virtual activado)
+  python ingesta/ingestar.py
 
-  # O mediante contenedor Docker aislado
-  docker build -t oralsolutions-ingesta .
-  docker run --rm -v "${PWD}\data\raw:/app/data/raw" oralsolutions-ingesta
+  # O mediante contenedor Docker aislado
+  docker build -t oralsolutions-ingesta .
+  docker run --rm -v "${PWD}\data\raw:/app/data/raw" oralsolutions-ingesta
 ```
 - **Alternativa 2 — Descarga manual de respaldo:** Si la descarga automática falla por restricciones de red, descargar manualmente los 11 archivos CSV desde la [carpeta de Google Drive](https://drive.google.com/drive/folders/1bDd9OOZ1SPTLjnGQld5IIn-x4Gp8KQIh?usp=drive_link), pegarlos dentro de `psets/proyecto/data/raw/` y volver a ejecutar `python ingesta/ingestar.py` para confirmar que todos los archivos y conteos estén íntegros.
 
@@ -55,11 +55,14 @@ psets/proyecto/
 │   ├── test_dbt_docker.yml
 │   ├── test_spark_docker.yml
 │   ├── backfill_appointments.yml
-│   └── flow_proyecto.yml        # Flujo maestro (id: flow_proyecto)
+│   ├── flow_proyecto.yml           # Flujo maestro ELT (id: flow_proyecto)
+│   ├── produccion_lotes.yml        # Inferencia batch nocturna contra la API
+│   ├── monitoreo.yml               # Evaluación de deriva y alertas
+│   └── reentrenamiento.yml         # Reentrenamiento con pausa de aprobación humana
 ├── infra/
-│   ├── docker-compose.yml       # PostgreSQL, Kestra, Spark y dbt
-│   ├── config/dbt/              # Plantilla y perfil privado de dbt
-│   └── sql/                     # Inicialización de Snowflake
+│   ├── docker-compose.yml          # PostgreSQL, Kestra, Spark, dbt, MLflow y API
+│   ├── config/dbt/                 # Plantilla y perfil privado de dbt
+│   └── sql/                        # Inicialización de Snowflake
 ├── modelado/
 │   ├── preparar_obt.py             # Extrae OBT de Snowflake, calcula abandono_60d y guarda CSV limpio
 │   ├── explorar_proyecto.ipynb     # EDA y 3 hallazgos que guían el modelado
@@ -70,8 +73,22 @@ psets/proyecto/
 │   ├── experimentos_proyecto.ipynb # Tuning, tracking MLflow y corridas_proyecto.csv
 │   ├── validacion_proyecto.ipynb   # Validación cruzada, costos y calibración de umbral
 │   ├── resultados_proyecto.csv     # Tabla comparativa de modelos candidatos
-│   └── corridas_proyecto.csv       # Exportación limpia de las 101 corridas de MLflow
-└── docs/                           # Canvas, propuesta, presentación, memo técnico y decision_modelo.md
+│   ├── corridas_proyecto.csv       # Exportación limpia de las 101 corridas de MLflow
+│   ├── test_pipeline_proyecto.py   # Pruebas unitarias reproducibles del pipeline
+│   └── reentrenar.py               # Reentrenamiento controlado y exportación MLflow
+├── servicio/
+│   ├── Dockerfile                  # Imagen de producción de la API FastAPI
+│   ├── requirements.txt            # Dependencias fijadas del servicio
+│   ├── api.py                      # Endpoints /salud, /modelo, /predecir, /metricas, /alertas
+│   ├── esquemas.py                 # Contratos Pydantic de entrada/salida
+│   ├── test_api.py                 # Pruebas de contrato, modelo, negocio y respaldo
+│   └── fixtures/                   # Modelo @champion y muestra fija para CI
+├── monitoreo/
+│   ├── deriva.py                   # Calidad de datos, PSI, KS, Chi² y deriva conceptual
+│   ├── alertas.py                  # Reglas de alerta calibradas por simulación
+│   ├── simular_produccion.py       # Simulación L01-L08 + L09 datos + L10 conceptual
+│   └── tablero.py                  # Tablero interactivo en Streamlit
+└── docs/                           # Memos, decision_modelo.md, despliegue.md y CSV de evidencias
 ```
 
 ### 2. Requisitos previos y entorno Python
@@ -82,12 +99,13 @@ psets/proyecto/
 # Crear y activar entorno virtual en PowerShell (desde psets/proyecto/)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt<>
+pip install -r requirements.txt
 ```
 
-(En Linux / GitHub Codespaces: 
-```
-python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt).
+En Linux / GitHub Codespaces:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 ```
 
 - **Cuenta de Snowflake** con permisos `ACCOUNTADMIN` y un método de autenticación compatible con conexiones **usuario/contraseña**.
@@ -200,7 +218,7 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
 ```
 
 ### Decisión de procesamiento: Batch vs. Streaming
-Este proyecto utiliza procesamiento por lotes (batch) diario (0 2 * * *, America/Guayaquil) y no requiere streaming, debido a que la decisión de negocio que habilita (priorizar llamadas, mensajes de seguimiento y reprogramaciones preventivas para pacientes con riesgo de abandonar su tratamiento en los próximos 60 días) no pierde valor con datos de horas de antigüedad. Durante la jornada diurna y vespertina la clínica registra citas y sesiones de forma progresiva, por lo que consolidar los datos en la madrugada permite que el equipo administrativo disponga cada mañana de las alertas actualizadas sin interferir con la operación clínica ni asumir la complejidad operativa de una arquitectura continua de baja latencia.
+Este proyecto utiliza procesamiento por lotes (batch) diario (0 2 * * * , America/Guayaquil) y no requiere streaming, debido a que la decisión de negocio que habilita (priorizar llamadas, mensajes de seguimiento y reprogramaciones preventivas para pacientes con riesgo de abandonar su tratamiento en los próximos 60 días) no pierde valor con datos de horas de antigüedad. Durante la jornada diurna y vespertina la clínica registra citas y sesiones de forma progresiva, por lo que consolidar los datos en la madrugada permite que el equipo administrativo disponga cada mañana de las alertas actualizadas sin interferir con la operación clínica ni asumir la complejidad operativa de una arquitectura continua de baja latencia.
 
 ## Cómo entrenar y evaluar el modelo
 
@@ -242,8 +260,8 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
 
 ## Modelo final
 - **Modelo elegido (`@champion`):** Pipeline completo de scikit-learn con **`MLPClassifier`** (`alpha = 0.00338`, `learning_rate_init = 3.49e-4`, `hidden_layer_sizes = (128, 64)`, `max_iter = 400`, `random_state = 42`).
-- **Identificador en MLflow (`run_id`):** `f37cad28df994cf2babe352ff5eff3ef` (corrida `FINAL_Red_Neuronal`, tag `candidato = final`).
-- **Model Registry:** `oralsolutions-modelo` — **Versión 5**, alias **`@champion`** (segundo mejor: `Tuning_LogisticRegression`, `run_id = d5825f3287a9495a8ffd12e2513be18d`, **Versión 6**, alias **`@challenger`**).
+- **Identificador en MLflow (`run_id`):** `169e8821e2c54761bf602b21f86aec93` (Versión 7, alias `@champion`).
+- **Model Registry:** `oralsolutions-modelo` — **Versión 7**, alias **`@champion`** (segundo mejor: `Tuning_LogisticRegression`, `run_id = 92446a9861994d22a0a7431b389f1eb1`, **Versión 8**, alias **`@challenger`** inicial; tras el ciclo de reentrenamiento controlado, la **Versión 9** (`run_id = ee684c683fc04b54845826bc76ce3b32`) quedó registrada como **`@challenger`**).
 - **Métricas que lo sostienen:**
     - **Validación cruzada temporal (`TimeSeriesSplit(5)`):** `PR-AUC = 0.98330 ± 0.00342` (superando en `+0.32` puntos a las líneas base operativas y con menor varianza entre pliegues que el `@challenger` `0.98298 ± 0.00461`).
     - **Conjunto de prueba (_hold-out_ `>= 2025-08-01`, 826 sesiones):** **`PR-AUC = 0.98269`** (reproducido exactamente al recargar `models:/oralsolutions-modelo@champion`), con tiempo de entrenamiento de `3.48 s` e inferencia `< 6 ms` para todo el trimestre.
@@ -252,4 +270,73 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
 
 ## Cómo correr el servicio
 
-[Cómo se construye y se levanta el contenedor de `servicio/`, qué versión del modelo carga desde el registro, y un ejemplo de petición con su respuesta. Se completa con el PSet 4.]
+El modelo ganador (`oralsolutions-modelo` **versión 7**, alias `@champion`, `run_id = 169e8821e2c54761bf602b21f86aec93`, umbral calibrado `u = 0.01`) se sirve mediante una API en **FastAPI** contenedorizada (`servicio/Dockerfile`) conectada al Model Registry de **MLflow** (`http://mlflow:5000`). El patrón de despliegue es **batch diario nocturno (`02:00`, `America/Guayaquil`)** orquestado por Kestra (`orquestacion/produccion_lotes.yml`). La documentación completa de despliegue, rollback y métricas está en `docs/despliegue.md`.
+
+### 1. Levantar MLflow y el servicio de predicción (`api`)
+
+Desde `psets/proyecto/`:
+
+```powershell
+# Construir y levantar MLflow + API en Docker
+docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2 up -d --build mlflow api
+
+# Verificar estado del servicio y versión activa desde el Model Registry
+Invoke-RestMethod http://127.0.0.1:8000/salud
+Invoke-RestMethod http://127.0.0.1:8000/modelo
+```
+
+_(En Linux / GitHub Codespaces, reemplaza `Invoke-RestMethod` por `curl -s http://127.0.0.1:8000/salud` y `curl -s http://127.0.0.1:8000/modelo`)._
+
+### 2. Ejemplo de petición y respuesta (`POST /predecir`)
+
+```bash
+curl -X POST http://127.0.0.1:8000/predecir \
+  -H "Content-Type: application/json" \
+  -d '{
+    "duracion_estimada_min": 75,
+    "numero_sesion": 1,
+    "sesiones_planificadas": 3,
+    "cancelaciones_previas": 0,
+    "inasistencias_previas": 0,
+    "dias_desde_inicio_plan": 14,
+    "edad_en_atencion": 42,
+    "codigo_procedimiento": "CROWN",
+    "odontologo_key": "2"
+  }'
+```
+
+Respuesta esperada (`200 OK`):
+```json
+{
+  "id_prediccion": "a3f9c2e1-...",
+  "probabilidad": 0.00412,
+  "decision": "no_contactar",
+  "accion": "Mantener seguimiento administrativo estándar",
+  "umbral_aplicado": 0.01,
+  "version_modelo": "7",
+  "run_id": "169e8821e2c54761bf602b21f86aec93",
+  "uso_respaldo": false,
+  "latencia_ms": 6.98,
+  "timestamp": "2026-11-19T16:15:00+00:00"
+}
+```
+
+### 3. Pruebas automáticas, monitoreo, tablero y reentrenamiento
+
+Desde `psets/proyecto/` (con `.venv` activo e instaladas las dependencias de `requirements.txt`):
+
+```powershell
+# 1. Ejecutar las 14 pruebas automáticas (pipeline + contrato, modelo, negocio y respaldo de API)
+pytest -v
+
+# 2. Simular producción por lotes (L01-L08 reales + L09 deriva de datos + L10 deriva conceptual)
+python monitoreo/simular_produccion.py
+
+# 3. Levantar el tablero interactivo de monitoreo (http://localhost:8501)
+streamlit run monitoreo/tablero.py
+
+# 4. Ejecutar ciclo de reentrenamiento controlado contra MLflow
+python modelado/reentrenar.py --decision rechazar --motivo-decision "Revision humana tras deriva conceptual en L10"
+```
+
+Los flujos automatizados de inferencia batch, monitoreo y reentrenamiento con pausa de aprobación humana se encuentran en `orquestacion/produccion_lotes.yml`, `orquestacion/monitoreo.yml` y `orquestacion/reentrenamiento.yml`. El CI/CD está automatizado en `.github/workflows/ci.yml` y `.github/workflows/cd.yml` (publicando la imagen en GHCR en cada _push_ a `master`).

@@ -8,9 +8,9 @@ Este documento resume la evidencia técnica y financiera que respalda el paso a 
 
 * **Modelo ganador (`@champion`):** Pipeline completo de scikit-learn (`ColumnTransformer` + `MLPClassifier` con `alpha = 0.00338`, `learning_rate_init = 3.49e-4`, `hidden_layer_sizes = (128, 64)`, `max_iter = 400`, `random_state = 42`).
 * **Experimento en MLflow:** `OralSolutions` (`modelado/experimentos_proyecto.ipynb`, exportado sin duplicados a `modelado/corridas_proyecto.csv` con 101 corridas).
-* **Corrida final oficial:** `FINAL_Red_Neuronal` con **`run_id = f37cad28df994cf2babe352ff5eff3ef`** y tag `candidato = final`.
-* **Model Registry:** Registrado como **`oralsolutions-modelo`** (**versión 5**, alias **`@champion`**). Al recargar `models:/oralsolutions-modelo@champion` en `modelado/validacion_proyecto.ipynb` se reproduce exactamente **`PR-AUC = 0.98269`** en prueba.
-* **Segundo mejor modelo (`@challenger`):** `Tuning_LogisticRegression` (`C = 73.9`, `class_weight = None`), **`run_id = d5825f3287a9495a8ffd12e2513be18d`**, registrado como **`oralsolutions-modelo`** (**versión 6**, alias **`@challenger`**).
+* **Corrida final oficial:** `FINAL_Red_Neuronal` con **`run_id = 169e8821e2c54761bf602b21f86aec9`** y tag `candidato = final`.
+* **Model Registry:** Registrado como **`oralsolutions-modelo`** (**versión 7**, alias **`@champion`**). Al recargar `models:/oralsolutions-modelo@champion` en `modelado/validacion_proyecto.ipynb` se reproduce exactamente **`PR-AUC = 0.98269`** en prueba.
+* **Segundo mejor modelo (`@challenger`):** `Tuning_LogisticRegression` (`C = 73.9`, `class_weight = None`), **`run_id = 92446a9861994d22a0a7431b389f1eb1`**, registrado como **`oralsolutions-modelo`** (**versión 8**, alias **`@challenger`**).
 
 ---
 
@@ -95,7 +95,7 @@ Para que cualquiera obtenga exactamente **`PR-AUC = 0.98269`** en prueba:
    * Script `psets/proyecto/modelado/pipeline_proyecto.py` con corte temporal fijo **`FECHA_CORTE = "2025-08-01"`** y semilla **`SEED = 42`**.
    * Servicio de MLflow levantado desde `psets/proyecto/infra/docker-compose.yml` (`http://127.0.0.1:5000`) o recuperación directa del artefacto registrado.
 2. **Qué quedó registrado en MLflow (verificable en `modelado/corridas_proyecto.csv`):**
-   * Parámetros: `tabla_origen = obt_riesgo_abandono.csv`, `fecha_corte = 2025-08-01`, `semilla = 42`, `hash_dataset = 937af6f343e5de34...`, `alpha = 0.00338`, `learning_rate_init = 0.000349`, `hidden_layer_sizes = (128, 64)`[cite: 13, 15].
+   * Parámetros: `tabla_origen = obt_riesgo_abandono.csv`, `fecha_corte = 2025-08-01`, `semilla = 42`, `hash_dataset = 937af6f343e5de34...`, `alpha = 0.00338`, `learning_rate_init = 0.000349`, `hidden_layer_sizes = (128, 64)`.
    * Tags y artefactos: `fase = final`, `familia = Red_Neuronal`, `candidato = final`, `git_commit`, firma del modelo y el `Pipeline` completo serializado (`mlflow.sklearn.log_model`).
 3. **Comando de verificación:**
    ```python
