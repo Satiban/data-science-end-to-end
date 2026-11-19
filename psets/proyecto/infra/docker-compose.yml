@@ -25,7 +25,6 @@ services:
       - /tmp/kestra-wd:/tmp/kestra-wd
       - ../data/raw:/data/raw:ro
       - ../warehouse/dbt:/app/dbt:ro
-
     environment:
       KESTRA_CONFIGURATION: |
         datasources:
@@ -56,7 +55,6 @@ services:
                 values:
                   volume-enabled: true
           url: http://localhost:8080/
-
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -69,39 +67,29 @@ services:
     working_dir: /opt/spark/work-dir
     entrypoint: ["/bin/bash", "-lc"]
     command: ["sleep infinity"]
-
     env_file:
       - ../.env
-
     environment:
       SPARK_LOCAL_IP: 127.0.0.1
       PYSPARK_PYTHON: python3
-
     volumes:
       - ../procesamiento:/opt/spark/work-dir
       - spark_ivy:/root/.ivy2
-
     ports:
       - "127.0.0.1:4040:4040"
-
     restart: unless-stopped
 
   dbt:
     build:
       context: ..
       dockerfile: Dockerfile.dbt
-
     working_dir: /app/dbt
-
     env_file:
       - ../.env
-
     volumes:
       - ../warehouse/dbt:/app/dbt
       - ../infra/config/dbt/profiles.yml:/root/.dbt/profiles.yml:ro
-
     entrypoint: ["tail", "-f", "/dev/null"]
-
     restart: unless-stopped
 
   mlflow:
@@ -111,11 +99,33 @@ services:
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:///mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
     volumes:
       - datos_mlflow:/mlflow
     ports:
       - "127.0.0.1:5000:5000"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: servicio/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: oralsolutions-modelo
+      MODEL_ALIAS: champion
+      UMBRAL_DECISION: "0.01"
+      USAR_MODELO_LOCAL: "false"
+      REGISTRAR_SNOWFLAKE: "false"
+    volumes:
+      - datos_mlflow:/mlflow
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - mlflow
     restart: unless-stopped
 
 volumes:
