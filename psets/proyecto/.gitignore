@@ -20,6 +20,7 @@ mlartifacts/
 
 # Python y Jupyter
 __pycache__/
+.pytest_cache/
 *.pyc
 .venv/
 venv/
@@ -42,3 +43,6 @@ servicio/predicciones_log.csv
 # Permitir únicamente el modelo fixture exportado para pruebas de CI
 !servicio/fixtures/modelo_champion/
 !servicio/fixtures/modelo_champion/**
+
+# dataset de simulacion de lotes de producción (no se sube)
+monitoreo/lotes_simulados.csv

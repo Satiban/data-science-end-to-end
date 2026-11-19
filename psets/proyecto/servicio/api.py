@@ -339,12 +339,51 @@ def predecir(solicitud: SolicitudPrediccion) -> RespuestaPrediccion:
         timestamp=ts_utc,
     )
 
+def evaluar_alertas_servicio() -> list[dict[str, Any]]:
+    """Evalúa alertas operativas y de deriva de predicciones en vivo dentro del servicio."""
+    alertas: list[dict[str, Any]] = []
+    latencias = list(estado.latencias_ms)
+    total_preds = estado.total_contactar + estado.total_no_contactar
+    tasa_err = (
+        (estado.errores_4xx + estado.errores_5xx) / estado.total_solicitudes
+        if estado.total_solicitudes > 0
+        else 0.0
+    )
+    p95_ms = float(np.percentile(latencias, 95)) if latencias else 0.0
+    tasa_contactar = estado.total_contactar / total_preds if total_preds > 0 else 0.0
+
+    if estado.modo_respaldo or (not estado.modelo_cargado):
+        alertas.append({
+            "tipo": "respaldo_activo",
+            "severidad": "Alta",
+            "mensaje": "Servicio operando en modo respaldo (regla de negocio) en lugar del modelo ML.",
+        })
+    if estado.total_solicitudes >= 10 and tasa_err > 0.05:
+        alertas.append({
+            "tipo": "tasa_errores_http",
+            "severidad": "Alta",
+            "mensaje": f"Tasa de errores HTTP elevada ({tasa_err:.1%} > 5%).",
+        })
+    if len(latencias) >= 10 and p95_ms > 250.0:
+        alertas.append({
+            "tipo": "latencia_alta",
+            "severidad": "Media",
+            "mensaje": f"Latencia p95 elevada ({p95_ms:.1f} ms > 250 ms).",
+        })
+    if total_preds >= 20 and (tasa_contactar < 0.65 or tasa_contactar > 0.98):
+        alertas.append({
+            "tipo": "deriva_predicciones",
+            "severidad": "Alta",
+            "mensaje": f"Tasa de decisión 'contactar' fuera de banda esperada ({tasa_contactar:.1%}).",
+        })
+    return alertas
 
 @app.get("/metricas")
 def metricas() -> dict[str, Any]:
     latencias = list(estado.latencias_ms)
     probs = list(estado.probabilidades)
     total_preds = estado.total_contactar + estado.total_no_contactar
+    alertas_activas = evaluar_alertas_servicio()
 
     return {
         "inicio_servicio": estado.inicio_servicio,
@@ -367,7 +406,13 @@ def metricas() -> dict[str, Any]:
             "tasa_contactar": round(estado.total_contactar / total_preds, 4) if total_preds > 0 else 0.0,
             "probabilidad_promedio": round(float(np.mean(probs)), 4) if probs else 0.0,
         },
+        "alertas_activas": alertas_activas,
     }
+
+@app.get("/alertas")
+def obtener_alertas() -> dict[str, Any]:
+    alertas = evaluar_alertas_servicio()
+    return {"total_alertas": len(alertas), "alertas": alertas}
 
 
 @app.post("/admin/respaldo")
