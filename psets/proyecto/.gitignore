@@ -35,3 +35,10 @@ warehouse/dbt/dbt_packages/
 Thumbs.db
 logs/
 *.log
+
+# Logs locales del servicio API
+servicio/predicciones_log.csv
+
+# Permitir únicamente el modelo fixture exportado para pruebas de CI
+!servicio/fixtures/modelo_champion/
+!servicio/fixtures/modelo_champion/**
