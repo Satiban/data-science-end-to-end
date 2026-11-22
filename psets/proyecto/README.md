@@ -8,7 +8,7 @@ Proyecto de ciencia de datos que prepara y modela los registros clínicos, opera
 
 | Fuente | Qué contiene | Cómo se obtiene | Dónde queda |
 |---|---|---|---|
-| Dataset clínico-operativo OralSolutions (11 archivos CSV) | 38,603 registros distribuidos en: `patients.csv`, `dentists.csv`, `insurers.csv`, `procedures.csv`, `treatment_plans.csv`, `treatment_sessions.csv`, `treatment_lines.csv`, `appointments.csv`, `missed_appointments.csv`, `patient_followups.csv` e `invoices.csv` (citas, planes de tratamiento, sesiones, facturación, aseguradoras y seguimientos). | Archivos fuente del proyecto colocados localmente en `data/raw/` y verificados mediante el script de ingesta contenedorizado antes de su carga hacia el warehouse. | `data/raw/*.csv` |
+| Dataset clínico-operativo OralSolutions (11 archivos CSV) | 38,603 registros distribuidos en: `patients.csv`, `dentists.csv`, `insurers.csv`, `procedures.csv`, `treatment_plans.csv`, `treatment_sessions.csv`, `treatment_lines.csv`, `appointments.csv`, `missed_appointments.csv`, `patient_followups.csv` e `invoices.csv` (citas, planes de tratamiento, sesiones, facturación, aseguradoras y seguimientos). | Descarga automática desde Google Drive mediante `ingesta/ingestar.py` (o automáticamente al ejecutar Kestra en `ingest_raw_oralsolutions.yml`), sin requerir descargas manuales previas. | `data/raw/*.csv` |
 
 Los datos no están en el repositorio (ignorados por `.gitignore`). Para obtener y verificar los archivos desde cero (desde `psets/proyecto/`):
 
@@ -39,12 +39,12 @@ psets/proyecto/
 ├── .env.example                 # Plantilla de variables de entorno
 ├── data/
 │   ├── raw/                     # 11 CSV de origen (ignorados por Git)
-│   └── processed/               # 11 CSV limpios generados por calidad/limpiar.py
+│   └── processed/               # Dataset limpio de modelado (obt_riesgo_abandono.csv)
 ├── ingesta/
 │   └── ingestar.py              # Descarga desde Drive y verificación de los 11 CSV
 ├── calidad/
 │   ├── diagnostico_proyecto.ipynb # Análisis de calidad por tabla y dimensión
-│   └── limpiar.py               # Script reproducible de limpieza
+│   └── limpiar.py               # Ejecutor de la limpieza centralizada en dbt Silver
 ├── warehouse/
 │   ├── construir_warehouse.py   # Carga y verificación de filas en DuckDB
 │   └── dbt/                     # Modelos y pruebas Bronze, Silver y Gold
@@ -54,7 +54,7 @@ psets/proyecto/
 │   ├── ingest_raw_oralsolutions.yml
 │   ├── test_dbt_docker.yml
 │   ├── test_spark_docker.yml
-│   ├── backfill_appointments.yml
+│   ├── backfill_oralsolutions.yml  # Backfill parametrizado para las 11 fuentes
 │   ├── flow_proyecto.yml           # Flujo maestro ELT (id: flow_proyecto)
 │   ├── produccion_lotes.yml        # Inferencia batch nocturna contra la API
 │   ├── monitoreo.yml               # Evaluación de deriva y alertas
@@ -91,6 +91,8 @@ psets/proyecto/
 └── docs/                           # Memos, decision_modelo.md, despliegue.md y CSV de evidencias
 ```
 
+> **Nota de estructura:** El proyecto sigue la estructura oficial del repositorio del curso (`psets/proyecto/`). Su equivalencia con la plantilla del enunciado PDF es: `infra/docker-compose.yml` (`docker-compose.yml`), `orquestacion/` (`kestra/`), `warehouse/dbt/` (`dbt/`), `procesamiento/` (`spark/`), `modelado/` (`src/` y `notebooks/`), `servicio/` (`api/` y `tests/`), `monitoreo/` (`monitoreo/`) y `docs/` (`docs/`).
+
 ### 2. Requisitos previos y entorno Python
 - **Docker Desktop** con Docker Compose y contenedores Linux. Los comandos siguientes están escritos para **PowerShell en Windows**.
 - **Python 3.11+** con un entorno virtual dedicado donde se instalen las librerías de requirements.txt (numpy, pandas, python-dotenv, requests, gdown, duckdb, pytest):
@@ -110,7 +112,7 @@ python3 -m venv .venv && source .venv/bin/activate && pip install -r requirement
 
 - **Cuenta de Snowflake** con permisos `ACCOUNTADMIN` y un método de autenticación compatible con conexiones **usuario/contraseña**.
 - Conexión a Internet para descargar los datos desde Google Drive, conectar con Snowflake y descargar las imágenes/dependencias de Docker y Spark.
-- Los **11 archivos CSV** descargados y verificados en `data/raw/` (mediante `python ingesta/ingestar.py`).
+- Sin descargas manuales: los 11 archivos CSV se descargan y verifican automáticamente en data/raw/ al ejecutar python ingesta/ingestar.py o directamente desde el flujo de Kestra (oralsolutions.flow_proyecto).
 
 > Salvo los scripts SQL (que se ejecutan en **Snowsight**), todos los comandos se ejecutan desde **`psets/proyecto/`**.
 
@@ -161,13 +163,12 @@ python -c "import base64,getpass; print(base64.b64encode(getpass.getpass('Contra
 - **En `infra/config/dbt/profiles.yml`:** completar `account`, `user`, `password` (texto plano, sin Base64), `role: ACCOUNTADMIN` y `warehouse: COMPUTE_WH` manteniendo el perfil `oralsolutions`, target `dev` y base `ORALSOLUTIONS_DW`.
 
 ### 4. Cadena local de calidad y warehouse (DuckDB)
-1. **Diagnóstico y limpieza de datos (`data/raw/*.csv` → `data/processed/*.csv`):**
-
+1. **Limpieza y validación de calidad centralizada en dbt (capa Silver):**
+Las reglas documentadas en `calidad/diagnostico_proyecto.ipynb` viven exclusivamente en `warehouse/dbt/models/silver/`. Una vez levantados los contenedores de la sección 5, pueden ejecutarse directamente con:
 ```PowerShell
-python calidad/limpiar.py
+  python calidad/limpiar.py
 ```
-
-(Aplica las reglas documentadas en calidad/diagnostico_proyecto.ipynb y guarda los 11 CSV limpios en data/processed/).
+(Invoca dbt run --select silver y dbt test --select silver sin duplicar lógica de limpieza en Python).
 
 2. **Carga al warehouse local DuckDB y verificación de filas:**
 
@@ -197,10 +198,10 @@ docker compose -f infra/docker-compose.yml --env-file .env --project-name pset_2
     1. `orquestacion/ingest_raw_oralsolutions.yml`
     2. `orquestacion/test_dbt_docker.yml`
     3. `orquestacion/test_spark_docker.yml`
-    4. `orquestacion/backfill_appointments.yml` _(opcional para recuperación histórica parametrizada)_
+    4. `orquestacion/backfill_oralsolutions.yml` *(recuperación histórica parametrizada para las 11 fuentes)*
     5. `orquestacion/flow_proyecto.yml` (**maestro**, `id: flow_proyecto`)
 
-4. **Ejecutar el pipeline maestro:** abrir `oralsolutions.flow_proyecto` en Kestra y seleccionar **Execute**. Ejecuta secuencialmente la ingesta idempotente a `RAW` (con reintentos exponenciales `maxAttempts: 3`), las transformaciones `dbt run` y `dbt test` (`BRONZE`, `SILVER`, `GOLD`), y la construcción de `OBT.OBT_RIESGO_ABANDONO` mediante `procesamiento/job_spark.py`.
+4. **Ejecutar el pipeline maestro:** abrir `oralsolutions.flow_proyecto` en Kestra y seleccionar **Execute**. Ejecuta secuencialmente la **descarga automática desde Google Drive** (si faltan archivos en `data/raw/`), la ingesta idempotente a `RAW` (con reintentos exponenciales `maxAttempts: 3`), las transformaciones `dbt run` y `dbt test` (`BRONZE`, `SILVER`, `GOLD`), y la construcción de `OBT.OBT_RIESGO_ABANDONO` mediante `procesamiento/job_spark.py`.
 
 ### 6. Verificar resultados y operaciones opcionales
 Resultados esperados en Snowflake: **11** tablas cargadas en `RAW` (**38,603** registros), **28** modelos dbt, **177** pruebas aprobadas, **6,794** eventos en `GOLD.FACT_SESIONES_TRATAMIENTO` y **3,435** puntos candidatos únicos en `OBT.OBT_RIESGO_ABANDONO`.
