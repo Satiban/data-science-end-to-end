@@ -23,7 +23,7 @@ services:
       - datos_kestra:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/kestra-wd:/tmp/kestra-wd
-      - ../data/raw:/data/raw:ro
+      - ../data/raw:/data/raw
       - ../warehouse/dbt:/app/dbt:ro
     environment:
       KESTRA_CONFIGURATION: |
