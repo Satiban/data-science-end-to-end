@@ -128,9 +128,18 @@ models:
 
   - name: fact_sesiones_tratamiento
     description: >
-      Tabla de hechos de sesiones de tratamiento.
-      Grano: una fila por sesion identificada
-      mediante SESSION_ID de Silver.
+      Tabla de hechos de eventos individuales de sesion de tratamiento
+      (6,794 filas). Grano: una fila por intento/evento de sesion identificado
+      de forma unica mediante SESION_KEY (ID de slv_treatment_sessions).
+      Tratamiento de reintentos: una misma sesion logica (PLAN_TRATAMIENTO_ID,
+      NUMERO_SESION) puede registrar multiples filas cuando ocurre una
+      cancelacion o inasistencia previa y luego se reprograma (1,396 registros,
+      20.55%, agrupados en 698 sesiones logicas con reintentos). Cada intento
+      conserva su propio ESTADO_KEY, su referencia operativa excluyente
+      (CITA_ID en las 5,645 sesiones completadas vs. CITA_PERDIDA_ID en las
+      1,149 canceladas/inasistidas), su FECHA_PLANIFICADA_KEY y su
+      FECHA_REALIZADA_KEY (nula en intentos fallidos), permitiendo contabilizar
+      reintentos y friccion previa sin sobreescribir el historial.
     columns:
       - name: SESION_KEY
         data_tests:

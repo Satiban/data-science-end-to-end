@@ -7,9 +7,9 @@ WITH source AS (
     SELECT
         id,
         appointment_id,
-        invoice_no,
+        UPPER(NULLIF(TRIM(invoice_no), '')) AS invoice_no,
         issued_on,
-        status,
+        LOWER(NULLIF(TRIM(status), '')) AS status,
         paid_on
 
     FROM {{ ref('brz_invoices') }}
